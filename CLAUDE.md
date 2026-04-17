@@ -24,13 +24,15 @@ See `pre-work/example1.md` and `pre-work/example2.md` for gold-standard examples
 
 ## Current Status
 
-**Phase: Brainstorm complete — ready for planning** (as of 2026-04-17)
+**Phase: Planning complete — ready for implementation** (as of 2026-04-17)
 
 MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md](docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md). That doc is the source of truth for design decisions; read it first.
 
-**Accomplished this session:** Scoped MVP to Function 1 only (live WhatsApp participant), chose stack (Node/TS + Baileys + Claude Agent SDK on Pro subscription), decided approval UX (Claude Desktop Dispatch with local-CLI fallback), compounding loop (growing `approved-responses.md`), graduated supervision with <20% edit-rate trigger to autonomous.
+The concrete implementation plan is at [docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md](docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md). Read this before writing any code — it defines file structure, build order, and all key technical decisions.
 
-**Next step:** Run `/compound-engineering:workflows:plan` to turn the brainstorm into a concrete implementation plan.
+**Accomplished this session:** Turned the brainstorm into a full 10-unit implementation plan. Resolved all open questions (approved-responses.md format, concurrent @mention handling, graduation mechanics, approval timeout behavior). Key clarifications: `@anthropic-ai/sdk` is the "Agent SDK" (no separate product), Dispatch approval UX is unverified (Unit 2 is a spike — readline CLI is the assumed default), `cache_control` has no `ttl` field, stale-message replay guard added to Unit 4.
+
+**Next step:** Review the plan at `docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md`, then run `/compound-engineering:ce-work` to begin implementation with Unit 1 (project scaffolding).
 
 ## Key Decisions (MVP)
 

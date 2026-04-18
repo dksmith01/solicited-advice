@@ -147,6 +147,7 @@ export function createMessageHandler(
         groupJid,
         mentionText: text,
         recentContextMessages,
+        quotedMessage: msg,
       };
 
       // Concurrent queue enforcement.

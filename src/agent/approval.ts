@@ -14,7 +14,7 @@
  */
 
 import TelegramBot from "node-telegram-bot-api";
-import type { WASocket } from "@whiskeysockets/baileys";
+import type { WASocket, WAMessage } from "@whiskeysockets/baileys";
 import type { BotConfig, ApprovedEntry } from "../types.js";
 import type { OnToolCallFn, ToolCallResult } from "./index.js";
 import { APPROVAL_REQUIRED_TOOLS } from "./tools.js";
@@ -57,7 +57,8 @@ function aliasFromJid(jid: string): string {
 export function createApprovalGate(
   sock: WASocket,
   config: BotConfig,
-  appendEntry: (entry: ApprovedEntry) => Promise<void>
+  appendEntry: (entry: ApprovedEntry) => Promise<void>,
+  getQuotedMessage: () => WAMessage | undefined
 ): OnToolCallFn {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -159,7 +160,7 @@ export function createApprovalGate(
       console.log(
         `[EDITED] ${timestamp()} — draft: "${preview(messageText)}" → "${preview(editedText)}"`
       );
-      await sock.sendMessage(recipientJid, { text: editedText });
+      await sock.sendMessage(recipientJid, { text: editedText }, { quoted: getQuotedMessage() });
       await appendEntry({
         date: dateStr,
         alias,
@@ -179,7 +180,7 @@ export function createApprovalGate(
     console.log(
       `[APPROVED] ${timestamp()} — draft: "${preview(messageText)}"`
     );
-    await sock.sendMessage(recipientJid, { text: messageText });
+    await sock.sendMessage(recipientJid, { text: messageText }, { quoted: getQuotedMessage() });
     await appendEntry({
       date: dateStr,
       alias,

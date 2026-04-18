@@ -28,6 +28,7 @@ export interface AgentTurn {
   groupJid: string;
   mentionText: string;
   recentContextMessages: string[];
+  quotedMessage: import("@whiskeysockets/baileys").WAMessage;
 }
 
 export interface BotConfig {

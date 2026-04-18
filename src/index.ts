@@ -109,10 +109,14 @@ const sock: WASocket = await startConnection(onMessage, async (key) => {
 // 6. Create approval gate (needs sock, which is now available)
 // ---------------------------------------------------------------------------
 
+// Per-turn quoted message ref — safe because queue depth is 1 (one approval at a time).
+let currentQuotedMessage: WAMessage | undefined;
+
 const approvalGate = createApprovalGate(
   sock,
   config,
-  async (entry) => appendEntry(entry)
+  async (entry) => appendEntry(entry),
+  () => currentQuotedMessage
 );
 
 // ---------------------------------------------------------------------------
@@ -120,13 +124,18 @@ const approvalGate = createApprovalGate(
 // ---------------------------------------------------------------------------
 
 async function onAgentTurn(turn: AgentTurn): Promise<void> {
-  await runAgentTurn(
-    turn.mentionText,
-    turn.recentContextMessages,
-    systemBlocks,
-    approvalGate,
-    turn.groupJid
-  );
+  currentQuotedMessage = turn.quotedMessage;
+  try {
+    await runAgentTurn(
+      turn.mentionText,
+      turn.recentContextMessages,
+      systemBlocks,
+      approvalGate,
+      turn.groupJid
+    );
+  } finally {
+    currentQuotedMessage = undefined;
+  }
 }
 
 // sock.user?.id is populated by the time startConnection resolves (Baileys sets

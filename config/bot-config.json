@@ -1,0 +1,8 @@
+{
+  "autonomousMode": false,
+  "approvalTimeoutMs": 1800000,
+  "maxContextMessages": 15,
+  "queueDepthMax": 1,
+  "maxInboundMessageChars": 2000,
+  "allowedGroupJids": []
+}

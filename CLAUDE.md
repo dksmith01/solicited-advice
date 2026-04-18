@@ -24,15 +24,13 @@ See `pre-work/example1.md` and `pre-work/example2.md` for gold-standard examples
 
 ## Current Status
 
-**Phase: Planning complete — ready for implementation** (as of 2026-04-17)
+**Phase: Integration testing** (as of 2026-04-18)
 
-MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md](docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md). That doc is the source of truth for design decisions; read it first.
+All 9 implementation units are code-complete and committed to `main`. The bot connects, detects @mentions, routes drafts to Telegram for approval, and sends quoted replies to the group.
 
-The concrete implementation plan is at [docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md](docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md). Read this before writing any code — it defines file structure, build order, and all key technical decisions.
+MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md](docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md). The implementation plan is at [docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md](docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md).
 
-**Accomplished this session:** Turned the brainstorm into a full 10-unit implementation plan. Resolved all open questions (approved-responses.md format, concurrent @mention handling, graduation mechanics, approval timeout behavior). Key clarifications: `@anthropic-ai/sdk` is the "Agent SDK" (no separate product), Dispatch approval UX is unverified (Unit 2 is a spike — readline CLI is the assumed default), `cache_control` has no `ttl` field, stale-message replay guard added to Unit 4.
-
-**Next step:** Review the plan at `docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md`, then run `/compound-engineering:ce-work` to begin implementation with Unit 1 (project scaffolding).
+**Outstanding:** Claude occasionally returns `end_turn` with plain text instead of calling `send_whatsapp_message` (observed on scope-guard/off-topic questions). Added `[agent] end_turn with text` warning log to diagnose. Next session: restart `npm run dev`, trigger an off-topic @mention, and read the warning log to see what Claude said — then tighten the system prompt scope-guard section to explicitly direct Claude to use the tool even for redirects.
 
 ## Key Decisions (MVP)
 
@@ -42,10 +40,29 @@ Quick reference — see brainstorm doc for rationale:
 - **Stack:** Node / TypeScript, `Baileys` (WhatsApp), Claude Agent SDK (TS).
 - **LLM billing:** David's Claude Pro subscription via Agent SDK — zero marginal cost at friend-group volume.
 - **Architecture:** Agent-native. Bot is a Claude agent with structured tools; `send_whatsapp_message` is approval-gated.
-- **Approval UX:** Claude Desktop Dispatch (confirmed on Pro). Fallback to local CLI if Dispatch edit-flow is insufficient.
+- **Approval UX:** Telegram bot (chosen in Unit 2 spike). `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` required in `.env`.
 - **Triggering:** `@Solicited-Advice` mentions only.
 - **Hosting:** Windows laptop during MVP; migrate to Oracle Free Tier or $5/mo VPS once validated.
 - **WhatsApp account:** Throwaway account on a prepaid SIM; David's personal account is untouched.
+
+## Baileys v7 Implementation Notes
+
+- npm package version: `7.0.0-rc.9` (exact) — `^7.0.0` fails to resolve; v7 is still in RC as of 2026-04
+- Event API: `sock.ev.on('messages.upsert', ...)` — `sock.ev.process()` does not exist in v7
+- **LID @mention detection**: WhatsApp sends mentions as LID (`225980358598881@lid`), not phone number. `createMessageHandler` accepts `botJids: string[]` — pass both `sock.user?.id` and `(sock.user as any)?.lid`. Compare the number portion (before `@` and before `:`) against each.
+- **Quoted replies**: `sock.sendMessage(jid, { text }, { quoted: originalMsg })` — third arg is the options object
+- Correct cache package: `node-cache` (not `@cacheable/node-cache` — that's a different library with a different API)
+- ESM config: `"module": "NodeNext"`, `"moduleResolution": "NodeNext"` — `"Bundler"` accepts extensionless imports that Node's ESM resolver rejects at runtime; all local imports need explicit `.js` extensions
+- Reboot recovery on Windows: `pm2 startup` emits systemd instructions — use `npm i -g pm2-windows-startup && pm2-startup install` or a Task Scheduler task running `pm2 resurrect`
+- Prompt cache minimum: 1024 tokens per block for Sonnet (2048 applies to Opus); `cache_control` only accepts `{ type: "ephemeral" }` — no `ttl` field
+- Group JID allowlist: bot uses `allowedGroupJids` in `bot-config.json`; discover the JID via `sock.groupFetchAllParticipating()` on first run and copy it into config
+
+## Agent Loop Gotchas
+
+- **Claude must be told to use the tool**: `config/system-prompt-core.md` must explicitly say "use `send_whatsapp_message` for ALL responses." Without this Claude returns `end_turn` with plain text that the loop discards silently.
+- **Pass groupJid in the user message**: `runAgentTurn` prepends `[recipient_jid: ${groupJid}]` to the user message so Claude knows the correct tool argument. Without this Claude hallucinates the recipient and DMs the sender instead of replying to the group.
+- **dotenv**: `src/index.ts` starts with `import "dotenv/config"` — PM2 does not auto-load `.env`.
+- **end_turn logging**: `[agent] end_turn with text` warning in the terminal means Claude returned prose without calling a tool — check the system prompt.
 
 ## Git Workflow
 

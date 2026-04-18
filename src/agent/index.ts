@@ -53,15 +53,16 @@ export async function runAgentTurn(
   mentionText: string,
   recentContextMessages: string[],
   systemBlocks: TextBlockParam[],
-  onToolCall: OnToolCallFn
+  onToolCall: OnToolCallFn,
+  groupJid: string
 ): Promise<void> {
-  // Build the initial user message: recent context followed by the mention.
+  // Build the initial user message: recipient JID, recent context, then mention.
   const contextSection =
     recentContextMessages.length > 0
       ? `Recent group conversation:\n${recentContextMessages.join("\n")}\n\n`
       : "";
 
-  const userMessageText = `${contextSection}${mentionText}`;
+  const userMessageText = `[recipient_jid: ${groupJid}]\n\n${contextSection}${mentionText}`;
 
   // Conversation history for this turn (grows as tool calls are processed).
   const messages: Anthropic.MessageParam[] = [

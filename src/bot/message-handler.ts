@@ -59,12 +59,14 @@ export function createMessageHandler(
   sock: WASocket,
   buffer: MessageBuffer,
   config: BotConfig,
-  botJid: string,
+  botJids: string[],
   onAgentTurn: (turn: AgentTurn) => Promise<void>
 ): void {
-  // The number portion of the bot JID, stripped of device suffix (:N) — used for
-  // LID-safe mention matching (e.g. "15551234567" from "15551234567:42@s.whatsapp.net").
-  const botNumber = botJid.split("@")[0].split(":")[0];
+  // Extract the number portion from each bot JID (strips device suffix and domain).
+  // Covers both phone JID (13056459014) and LID (225980358598881).
+  const botNumbers = new Set(
+    botJids.map((jid) => jid.split("@")[0].split(":")[0]).filter(Boolean)
+  );
 
   // Per-group concurrency state
   const isProcessing = new Map<string, boolean>();
@@ -115,12 +117,12 @@ export function createMessageHandler(
         continue;
       }
 
-      // Check whether the bot is @mentioned.
+      // Check whether the bot is @mentioned (LID-safe: compare number portion only).
       const mentionedJids: string[] =
         msg.message?.extendedTextMessage?.contextInfo?.mentionedJid ?? [];
 
       const mentioned = mentionedJids.some(
-        (jid) => jid.split("@")[0].split(":")[0] === botNumber
+        (jid) => botNumbers.has(jid.split("@")[0].split(":")[0])
       );
 
       if (!mentioned) continue;

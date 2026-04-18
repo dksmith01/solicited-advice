@@ -124,7 +124,8 @@ async function onAgentTurn(turn: AgentTurn): Promise<void> {
     turn.mentionText,
     turn.recentContextMessages,
     systemBlocks,
-    approvalGate
+    approvalGate,
+    turn.groupJid
   );
 }
 
@@ -132,15 +133,20 @@ async function onAgentTurn(turn: AgentTurn): Promise<void> {
 // it during the 'connection.update' open event, which fires before the promise
 // resolves for new connections; for reconnect paths it may be from cached creds).
 const botJid = sock.user?.id ?? "";
+// sock.user may also carry a .lid field in Baileys v7 (LID-based identity).
+// WhatsApp now sends @mentions using the LID, so we must match against both.
+const botLid = ((sock.user as unknown) as Record<string, unknown>)?.lid as string | undefined ?? "";
 
 if (!botJid) {
   console.warn(
-    "[startup] sock.user?.id is empty — @mention detection will not work until the socket is fully open. " +
-    "This is normal on the very first QR scan. The handler will be registered and will match once the JID is known."
+    "[startup] sock.user?.id is empty — @mention detection will not work until the socket is fully open."
   );
 }
 
-createMessageHandler(sock, buffer, config, botJid, onAgentTurn);
+const botJids = [botJid, botLid].filter(Boolean);
+console.log(`[startup] Bot identifiers: ${JSON.stringify(botJids)}`);
+
+createMessageHandler(sock, buffer, config, botJids, onAgentTurn);
 messageHandlerRegistered = true;
 
 console.log(`[startup] Bot ready. JID: ${botJid || "(pending QR scan)"}`);

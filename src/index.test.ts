@@ -100,7 +100,8 @@ function createWiredBot(opts: {
       turn.mentionText,
       turn.recentContextMessages,
       systemBlocks,
-      onToolCall
+      onToolCall,
+      turn.groupJid
     );
   }
 
@@ -111,7 +112,7 @@ function createWiredBot(opts: {
     sock as unknown as import("@whiskeysockets/baileys").WASocket,
     buffer,
     TEST_CONFIG,
-    botJid,
+    [botJid],
     onAgentTurn
   );
 

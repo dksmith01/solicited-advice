@@ -60,7 +60,6 @@ const TEST_CONFIG: BotConfig = {
   maxContextMessages: 5,
   queueDepthMax: 1,
   maxInboundMessageChars: 2000,
-  allowedGroupJids: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -113,6 +112,7 @@ function createWiredBot(opts: {
     buffer,
     TEST_CONFIG,
     [botJid],
+    [],
     onAgentTurn
   );
 

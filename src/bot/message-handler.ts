@@ -60,6 +60,7 @@ export function createMessageHandler(
   buffer: MessageBuffer,
   config: BotConfig,
   botJids: string[],
+  allowedGroupJids: string[],
   onAgentTurn: (turn: AgentTurn) => Promise<void>
 ): void {
   // Extract the number portion from each bot JID (strips device suffix and domain).
@@ -111,8 +112,8 @@ export function createMessageHandler(
 
       // Group allowlist check.
       if (
-        config.allowedGroupJids.length > 0 &&
-        !config.allowedGroupJids.includes(groupJid)
+        allowedGroupJids.length > 0 &&
+        !allowedGroupJids.includes(groupJid)
       ) {
         continue;
       }

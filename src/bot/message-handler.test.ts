@@ -64,7 +64,6 @@ const DEFAULT_CONFIG: BotConfig = {
   maxContextMessages: 10,
   queueDepthMax: 1,
   maxInboundMessageChars: 2000,
-  allowedGroupJids: [],
 };
 
 /** Build a recent (not stale) timestamp in seconds. */
@@ -129,6 +128,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 
@@ -155,6 +155,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 
@@ -176,6 +177,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 
@@ -197,6 +199,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 
@@ -238,6 +241,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       blockingOnAgentTurn
     );
 
@@ -289,6 +293,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 
@@ -326,6 +331,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 
@@ -345,6 +351,7 @@ describe("createMessageHandler", () => {
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
+      [],
       onAgentTurn
     );
 

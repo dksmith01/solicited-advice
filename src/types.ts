@@ -37,5 +37,4 @@ export interface BotConfig {
   maxContextMessages: number;
   queueDepthMax: number;
   maxInboundMessageChars: number;
-  allowedGroupJids: string[];
 }

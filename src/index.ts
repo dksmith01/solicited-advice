@@ -155,7 +155,12 @@ if (!botJid) {
 const botJids = [botJid, botLid].filter(Boolean);
 console.log(`[startup] Bot identifiers: ${JSON.stringify(botJids)}`);
 
-createMessageHandler(sock, buffer, config, botJids, onAgentTurn);
+const allowedGroupJids = (process.env.ALLOWED_GROUP_JIDS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+createMessageHandler(sock, buffer, config, botJids, allowedGroupJids, onAgentTurn);
 messageHandlerRegistered = true;
 
 console.log(`[startup] Bot ready. JID: ${botJid || "(pending QR scan)"}`);

@@ -149,8 +149,19 @@ export function createApprovalGate(
     }
 
     if (decision.action === "reject") {
+      // Ask David for an optional reason — if given, Claude gets another shot.
+      await bot.sendMessage(
+        chatId,
+        "Rejected. Reply with a reason and Claude will try again, or reply 'skip' to drop it. (2 min timeout)"
+      );
+
+      const reason = await Promise.race([
+        waitForReason(bot, chatId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 120_000)),
+      ]);
+
       console.log(
-        `[REJECTED] ${timestamp()} — draft: "${preview(messageText)}"`
+        `[REJECTED] ${timestamp()} — draft: "${preview(messageText)}"${reason ? ` — reason: "${reason}"` : ""}`
       );
       await appendEntry({
         date: dateStr,
@@ -159,6 +170,15 @@ export function createApprovalGate(
         status: "rejected",
         originalDraft: messageText,
       });
+
+      if (reason) {
+        return {
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: `David rejected this draft. His feedback: "${reason}". Please write a different response taking this feedback into account, then call send_whatsapp_message again.`,
+        };
+      }
+
       return {
         type: "tool_result",
         tool_use_id: toolUseId,
@@ -263,6 +283,27 @@ function waitForDecision(
       await bot.sendMessage(chatId, "Unrecognized. Reply a, e <text>, or r.");
     };
 
+    bot.on("message", handler);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// waitForReason
+// ---------------------------------------------------------------------------
+
+/**
+ * After a rejection, waits for David to provide an optional reason.
+ * Resolves with the reason string, or null if David replies 'skip'.
+ * Caller is responsible for racing this against a timeout.
+ */
+function waitForReason(bot: TelegramBot, chatId: string): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    const handler = (msg: TelegramBot.Message) => {
+      if (String(msg.chat.id) !== chatId) return;
+      const text = (msg.text ?? "").trim();
+      bot.removeListener("message", handler);
+      resolve(text.toLowerCase() === "skip" ? null : text);
+    };
     bot.on("message", handler);
   });
 }

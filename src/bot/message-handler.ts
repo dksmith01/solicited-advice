@@ -99,6 +99,7 @@ export function createMessageHandler(
       if (msg.key.fromMe === true) continue;
 
       const groupJid = msg.key.remoteJid;
+      console.log(`[message] upsert from=${groupJid} isGroup=${isJidGroup(groupJid ?? "")} staleMs=${Date.now() - toTimestampMs(msg.messageTimestamp)}`);
 
       // Stale-message guard — prevents @mentions replayed on reconnect.
       const ageMs = Date.now() - toTimestampMs(msg.messageTimestamp);

@@ -122,7 +122,7 @@ async function startSock(
 
     if (connection === "open") {
       logger.info("WhatsApp connection open");
-      // Discover group JIDs so David can copy the right one into bot-config.json.
+      // Discover group JIDs so David can copy the right one into ALLOWED_GROUP_JIDS in .env.
       try {
         const groups = await sock.groupFetchAllParticipating();
         logger.info("=== Joined WhatsApp groups ===");
@@ -131,7 +131,7 @@ async function startSock(
           // Cache metadata while we have it.
           groupMetaCache.set(jid, meta);
         }
-        logger.info("=== Copy the desired JID into config/bot-config.json ===");
+        logger.info("=== Copy the desired JID into ALLOWED_GROUP_JIDS in .env ===");
       } catch (err) {
         logger.warn({ err }, "groupFetchAllParticipating failed");
       }

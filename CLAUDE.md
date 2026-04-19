@@ -30,11 +30,12 @@ All 9 implementation units are code-complete and passing integration tests. The 
 
 MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md](docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md). The implementation plan is at [docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md](docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md).
 
-**Next step: Roll out to the "AI-Curious" WhatsApp group.**
-1. Have the throwaway WhatsApp account join the group
-2. On first connection, copy the group JID from `sock.groupFetchAllParticipating()` output or bot logs
-3. Add the JID to `allowedGroupJids` in `config/bot-config.json`
-4. David sends a human intro message; optionally trigger a bot welcome via @mention through the approval gate
+**Live in "AI-Curious" as of 2026-04-19.** Friends can @mention the bot for real.
+
+**Next steps:**
+- Monitor early responses for quality and voice consistency
+- Watch for `[agent] end_turn with text` warnings (Claude skipping the tool)
+- Repo is public on GitHub — share as a learning artifact
 
 **Session learnings (2026-04-19):**
 - Recent context was leaking into Claude's focus — fixed by labeling context as background-only and labeling the current mention explicitly

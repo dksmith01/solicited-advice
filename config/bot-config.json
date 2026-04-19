@@ -4,5 +4,5 @@
   "maxContextMessages": 15,
   "queueDepthMax": 1,
   "maxInboundMessageChars": 2000,
-  "allowedGroupJids": ["120363424864915627@g.us"]
+  "allowedGroupJids": []
 }

@@ -59,10 +59,10 @@ export async function runAgentTurn(
   // Build the initial user message: recipient JID, recent context, then mention.
   const contextSection =
     recentContextMessages.length > 0
-      ? `Recent group conversation:\n${recentContextMessages.join("\n")}\n\n`
+      ? `Recent group conversation (background context only — do NOT respond to these):\n${recentContextMessages.join("\n")}\n\n`
       : "";
 
-  const userMessageText = `[recipient_jid: ${groupJid}]\n\n${contextSection}${mentionText}`;
+  const userMessageText = `[recipient_jid: ${groupJid}]\n\n${contextSection}CURRENT MESSAGE ADDRESSED TO YOU (respond to this one):\n${mentionText}`;
 
   // Conversation history for this turn (grows as tool calls are processed).
   const messages: Anthropic.MessageParam[] = [
@@ -105,7 +105,13 @@ export async function runAgentTurn(
     }
 
     if (response.stop_reason === "end_turn") {
-      // Model finished naturally — nothing more to do.
+      const textContent = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      if (textContent) {
+        console.warn("[agent] end_turn with text (tool not called):", textContent.slice(0, 200));
+      }
       break;
     }
 

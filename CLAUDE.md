@@ -24,13 +24,23 @@ See `pre-work/example1.md` and `pre-work/example2.md` for gold-standard examples
 
 ## Current Status
 
-**Phase: Integration testing** (as of 2026-04-18)
+**Phase: Ready for live rollout** (as of 2026-04-19)
 
-All 9 implementation units are code-complete and committed to `main`. The bot connects, detects @mentions, routes drafts to Telegram for approval, and sends quoted replies to the group.
+All 9 implementation units are code-complete and passing integration tests. The bot connects, detects @mentions, routes drafts to Telegram for approval, sends quoted replies to the group, and now searches the web for current information via Brave Search.
 
 MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md](docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md). The implementation plan is at [docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md](docs/plans/2026-04-17-001-feat-whatsapp-advice-bot-mvp-plan.md).
 
-**Outstanding:** Claude occasionally returns `end_turn` with plain text instead of calling `send_whatsapp_message` (observed on scope-guard/off-topic questions). Added `[agent] end_turn with text` warning log to diagnose. Next session: restart `npm run dev`, trigger an off-topic @mention, and read the warning log to see what Claude said — then tighten the system prompt scope-guard section to explicitly direct Claude to use the tool even for redirects.
+**Next step: Roll out to the "AI-Curious" WhatsApp group.**
+1. Have the throwaway WhatsApp account join the group
+2. On first connection, copy the group JID from `sock.groupFetchAllParticipating()` output or bot logs
+3. Add the JID to `allowedGroupJids` in `config/bot-config.json`
+4. David sends a human intro message; optionally trigger a bot welcome via @mention through the approval gate
+
+**Session learnings (2026-04-19):**
+- Recent context was leaking into Claude's focus — fixed by labeling context as background-only and labeling the current mention explicitly
+- Added `search_web` tool (Brave Search API) so Claude can look up recent AI releases; requires `BRAVE_SEARCH_API_KEY` in `.env`
+- Tightened system prompt: refusals/redirects/ethics blocks must also go through `send_whatsapp_message` — Claude was silently dropping them
+- Added "words to never use" list to David's Voice section ("Honestly", "Frankly", etc.)
 
 ## Key Decisions (MVP)
 

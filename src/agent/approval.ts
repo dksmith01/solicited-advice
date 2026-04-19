@@ -18,6 +18,7 @@ import type { WASocket, WAMessage } from "@whiskeysockets/baileys";
 import type { BotConfig, ApprovedEntry } from "../types.js";
 import type { OnToolCallFn, ToolCallResult } from "./index.js";
 import { APPROVAL_REQUIRED_TOOLS } from "./tools.js";
+import { searchWeb } from "./search.js";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -79,9 +80,19 @@ export function createApprovalGate(
     toolUseId: string
   ): Promise<ToolCallResult> => {
     // -----------------------------------------------------------------------
-    // Non-approval-gated tools — pass through immediately.
+    // Non-approval-gated tools — execute immediately and return results.
     // -----------------------------------------------------------------------
     if (!APPROVAL_REQUIRED_TOOLS.has(toolName)) {
+      if (toolName === "search_web") {
+        const query = String(toolInput.query ?? "");
+        console.log(`[search] query: "${query}"`);
+        const results = await searchWeb(query);
+        return {
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: results,
+        };
+      }
       return {
         type: "tool_result",
         tool_use_id: toolUseId,

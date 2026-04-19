@@ -9,10 +9,9 @@ import Anthropic from "@anthropic-ai/sdk";
 /**
  * All tools available to the agent.
  *
- * send_whatsapp_message  — approval-gated; David must approve before the
- *                          message is delivered to the group.
- * append_to_examples_file — auto-approved; records approved/edited/rejected
- *                           responses to build the examples corpus over time.
+ * send_whatsapp_message   — approval-gated; David must approve before sent.
+ * append_to_examples_file — auto-approved; builds the examples corpus.
+ * search_web              — auto-approved; Brave Search for current info.
  */
 export const tools: Anthropic.Tool[] = [
   {
@@ -69,6 +68,22 @@ export const tools: Anthropic.Tool[] = [
         },
       },
       required: ["question", "response", "status"],
+    },
+  },
+  {
+    name: "search_web",
+    description:
+      "Search the web for current information. Use this when you need up-to-date facts — recent AI product releases, news, announcements — that may be beyond your training knowledge. Returns a list of web results with titles, URLs, and descriptions.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "The search query, e.g. 'Anthropic Claude Design release April 2026'.",
+        },
+      },
+      required: ["query"],
     },
   },
 ];

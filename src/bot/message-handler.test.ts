@@ -128,7 +128,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 
@@ -154,7 +154,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 
@@ -175,7 +175,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 
@@ -196,7 +196,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 
@@ -237,7 +237,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       blockingOnAgentTurn
     );
 
@@ -288,7 +288,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 
@@ -325,7 +325,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 
@@ -344,7 +344,7 @@ describe("createMessageHandler", () => {
       sock as unknown as import("@whiskeysockets/baileys").WASocket,
       buffer,
       DEFAULT_CONFIG,
-      BOT_JID,
+      [BOT_JID],
       onAgentTurn
     );
 

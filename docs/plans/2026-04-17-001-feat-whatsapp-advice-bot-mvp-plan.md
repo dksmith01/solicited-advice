@@ -13,6 +13,8 @@ deepened: 2026-04-17
 
 Build the first working version of Solicited-Advice: a Claude agent that lives in a WhatsApp group, drafts AI advice in David's voice when @mentioned, routes every draft through a human approval gate, and compounds its quality over time by recording approved exchanges. The MVP proves one hypothesis — do friends find the bot's advice valuable enough to engage with? — before any infrastructure scaling or content-pipeline work.
 
+**Hypothesis validated when:** friends re-mention the bot, reply to its responses, or ask follow-up questions within the first 2–4 weeks of operation. This is a qualitative signal — David decides when he sees enough engagement to declare the hypothesis proven. No formal threshold is required.
+
 ## Problem Frame
 
 David's "AI Curious" WhatsApp group of non-technical-but-smart friends in their early 50s asks AI questions in conversation. David has a distinctive advice style (reframe first, identify workflow context, give a specific first step, stay jargon-free) that is hard to scale to every question in real time. A bot that approximates that style — with David as the approval gate — lets him multiply his reach while maintaining quality control until the bot earns autonomy.
@@ -25,10 +27,11 @@ The full problem frame and rationale for rejecting alternative approaches are in
 - R2. Bot drafts a reply in David's voice using a static system prompt + dynamic `approved-responses.md` examples
 - R3. Every draft is routed through a human approval gate before sending; David can approve, edit, or reject
 - R4. Approved exchanges (with edit status) are appended to `approved-responses.md` to compound the bot's quality over time
-- R5. A graduation metric script computes edit rate over the last 20 decisions; David manually flips an autonomous-mode config once the threshold is met
-- R6. The bot runs as a persistent process on David's Windows laptop with automatic crash recovery
-- R7. The bot account is isolated on a throwaway WhatsApp account; David's personal account is never involved
-- R8. No cloud costs in MVP; LLM via Claude Pro subscription (`@anthropic-ai/sdk`), bot on local laptop
+- R5. The bot runs as a persistent process on David's Windows laptop with automatic crash recovery
+- R6. The bot account is isolated on a throwaway WhatsApp account; David's personal account is never involved
+- R7. No cloud costs in MVP; LLM via Claude Pro subscription (`@anthropic-ai/sdk`), bot on local laptop
+
+*(Graduation metric moved to post-MVP: see Deferred to Separate Tasks)*
 
 ## Scope Boundaries
 
@@ -44,6 +47,7 @@ The full problem frame and rationale for rejecting alternative approaches are in
 - VPS migration (Oracle Free Tier / $5/mo): separate task once MVP is validated
 - Windows Task Scheduler auto-start on reboot: separate task (PM2 crash recovery is sufficient for MVP)
 - Opt-out per-user state: separate task if group members request it
+- Graduation metric script (`graduation.ts`, `graduation-check.ts`): separate task post-hypothesis. Unit 8 is removed from MVP scope. The `autonomousMode` config flag remains as a manual toggle David can flip at any time without a script.
 
 ## Context & Research
 
@@ -71,16 +75,16 @@ None yet — first project. `docs/solutions/` does not exist.
 
 - **Manual agentic loop (not tool runner) for MVP**: The `@anthropic-ai/sdk` tool runner auto-executes all tools. The manual loop is required for the approval gate because it intercepts each `tool_use` block before execution. Switch to the tool runner when the bot graduates to autonomous mode — the graduation script is the trigger for that refactor. *(see origin: docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md)*
 - **`@anthropic-ai/sdk` is the implementation of "Claude Agent SDK"**: The brainstorm references a "Claude Agent SDK" — this is the official `@anthropic-ai/sdk` npm package. There is no separate product. The agentic pattern uses `client.messages.create()` in a `while (stop_reason !== 'end_turn')` loop with a tool-call intercept.
-- **Prompt caching via two-block system prompt**: Core instructions (frozen) get one `cache_control: { type: "ephemeral" }` block; the loaded `approved-responses.md` content gets a second block with the same `cache_control`. System blocks are built once at startup and reused across all turns. Minimum 2048 tokens for caching on Sonnet 4.6. The `cache_control` object only accepts `{ type: "ephemeral" }` — there is no `ttl` field in the API. Never put volatile data (timestamps, message IDs) in the cached prefix.
+- **Prompt caching via two-block system prompt**: Core instructions (frozen) get one `cache_control: { type: "ephemeral" }` block; the loaded `approved-responses.md` content gets a second block with the same `cache_control`. System blocks are built once at startup and reused across all turns. Minimum 1024 tokens per block for caching on claude-sonnet models (2048 applies to Opus). The `cache_control` object only accepts `{ type: "ephemeral" }` — there is no `ttl` field in the API. Never put volatile data (timestamps, message IDs) in the cached prefix.
 - **Rolling message buffer per group**: Baileys v7 has no "get last N messages" API. The bot maintains a 30-message per-group in-memory buffer populated by `messages.upsert`, reset on process restart (acceptable — the bot only reasons about active conversations).
 - **`approved-responses.md` format with metadata**: Each entry uses a structured heading (`## [ISO-date] · [first-name-alias] · [status]`) parseable by a simple grep/regex script. Status values: `approved` (no edit), `edited` (David changed the draft), `rejected` (no message sent). See Unit 7 for full schema.
-- **Rejection tracking is required for the graduation metric**: The denominator is all decisions (approved + edited + rejected). Edit rate = `edited / (approved + edited)` in the last 20 non-rejected responses. Rejections are stored to keep the total-decisions count accurate.
+- **Rejection tracking is required for the graduation metric**: Edit rate = `edited / (approved + edited)` (sent responses only). Rejections are tracked in `approved-responses.md` and counted in the total-decisions report output, but excluded from the edit-rate denominator.
 - **Approval timeout = 30 minutes, silent drop**: If David does not respond to a Dispatch notification within 30 minutes, the pending approval is dropped and logged to console. No message is sent to the WhatsApp group. This prevents stale approvals from firing hours later.
 - **Concurrent @mentions: queue depth 1**: If a second @mention arrives while an agent turn is in progress, it is queued. A third concurrent @mention triggers a polite holding message to the group and is dropped. This avoids context-mismatch issues where two independent drafts reason about the same conversation state.
 - **`send_whatsapp_message` approval gate applies to clarifying questions too**: In supervised mode, any Claude-initiated message goes through the gate. This avoids unsupervised content in the group during the trust-building period.
 - **Autonomous mode is a manual config flag**: The graduation script prints the metric; David edits `config/bot-config.json` to flip `autonomousMode: true`. The bot reads this at startup. There is no auto-flip.
-- **Dispatched edit-flow is verified in Unit 2 before any other build; readline CLI is the likely default**: Claude Desktop Dispatch surfaces tools via MCP servers in its own session — it does not intercept tool calls made by an external `@anthropic-ai/sdk` process. This is the highest-uncertainty dependency. The Unit 2 spike verifies the Dispatch path, but implementers should assume Branch B (readline CLI) is the real implementation. Branch A code should not be built until the spike confirms Dispatch integration is viable. The readline fallback is the 2–4 hour build referenced in the brainstorm. *(see origin: open question #1)*
-- **ESM-only project**: Baileys v7 requires ESM. `package.json` gets `"type": "module"`. All imports use ES module syntax. tsconfig targets `"module": "ESNext"` and `"moduleResolution": "Bundler"`.
+- **Readline CLI is the default approval UX; Unit 2 evaluates alternatives**: Claude Desktop Dispatch cannot intercept tool calls from an external `@anthropic-ai/sdk` process, so it is not a viable option. The readline CLI fallback (Branch B) is the baseline implementation. Unit 2 is an approval UX spike that investigates whether a mobile-friendly alternative (Telegram bot, localhost web UI) is worth the extra build time before Unit 6 is written. If Unit 2 produces no clear winner within 30 minutes, readline CLI is implemented in Unit 6. *(see origin: open question #1)*
+- **ESM-only project**: Baileys v7 requires ESM. `package.json` gets `"type": "module"`. All imports use ES module syntax with explicit `.js` extensions (required by Node's native ESM resolver). tsconfig targets `"module": "NodeNext"` and `"moduleResolution": "NodeNext"`.
 - **PM2 for Windows crash recovery**: Runs `dist/index.js` with `--exp-backoff-restart-delay=100` (100ms → ~15s exponential). PM2 keeps the process alive across crashes without manual restart. `pm2 startup` generates a Windows startup script for reboot recovery.
 - **Auth directory is gitignored**: `baileys_auth_info/` holds the WhatsApp session credentials for the throwaway account. Already covered by `.gitignore`; double-check before first commit.
 
@@ -89,16 +93,16 @@ None yet — first project. `docs/solutions/` does not exist.
 ### Resolved During Planning
 
 - **`approved-responses.md` format**: Structured markdown with parseable heading (`## [date] · [alias] · [status]`), `**Q:**` and `**Sent:**` fields. See Unit 7. Rejection entries include a `**Draft:**` field so David can review what was rejected later.
-- **Graduation metric implementation**: Simple regex over the last 20 non-rejected entries in `approved-responses.md`. One TypeScript script in `scripts/graduation-check.ts` prints the result. No dashboard.
 - **Concurrent @mention handling**: Queue with max depth 1. A polite "I'm working on another reply — please re-mention me in a moment" message is sent automatically (bypassing the approval gate, since it's a holding message, not advice).
-- **Autonomous mode mechanics**: Manual config flip. `config/bot-config.json` has `autonomousMode: false`. The graduation script tells David when the threshold is met; he decides when to flip.
-- **Windows SIGTERM**: `process.on('SIGTERM')` does not fire on Windows from Task Scheduler shutdown. Use `process.on('SIGINT')` for graceful cleanup. PM2's `stop` command sends SIGINT on Windows.
+- **Autonomous mode mechanics**: Manual config flip. `config/bot-config.json` has `autonomousMode: false`. David decides when to flip based on qualitative judgment after the hypothesis is validated.
+- **Windows signal handling**: Register both `process.on('SIGINT')` and `process.on('SIGTERM')` calling a shared cleanup function. PM2's Windows behavior varies; both handlers are needed.
+- **Approval UX**: Readline CLI is the baseline (Branch B). Unit 2 evaluates whether a mobile-friendly alternative (Telegram bot, localhost web UI) is worth building instead. Decision gates Unit 6.
 
 ### Deferred to Implementation
 
-- **Dispatch edit-flow capability**: Must be verified in Unit 2 (Dispatch spike) before the rest of the approval gate is built. If Dispatch does not support draft editing, the readline CLI fallback replaces it in Unit 6.
+- **Approval UX choice**: Unit 2 evaluates readline CLI vs. Telegram bot vs. localhost web UI. Readline CLI is implemented in Unit 6 by default unless Unit 2 identifies a clear better option worth the build time.
 - **LID JID format for @mentions**: WhatsApp v7 migrated to LID identifiers for mentions in some group messages. The mention detection logic should compare on the number portion before `@` rather than full JID equality. May need adjustment if real-world testing shows mismatches.
-- **Exact system prompt text**: The voice principles (from `pre-work/example1.md` and `example2.md`) and scope enforcement rules are written as part of Unit 8 (not here — this is a content decision, not an architecture decision).
+- **Exact system prompt text**: The voice principles (from `pre-work/example1.md` and `example2.md`) and scope enforcement rules are written as part of Unit 5 (not here — this is a content decision, not an architecture decision).
 - **`getMessage` implementation**: Baileys v7 requires a `getMessage` callback for message retry. Implementation should return the message from the rolling buffer if available; return `undefined` otherwise. Exact shape depends on buffer implementation from Unit 4.
 - **First-use onboarding message to group**: The bot sends a plain-language "here's what I am, David is in the loop, here's how to opt out" message when first added to the group. Content and exact timing are deferred to the final smoke test phase.
 
@@ -114,22 +118,20 @@ solicited-advice/
     agent/
       index.ts             # manual agentic loop (messages.create while loop)
       tools.ts             # send_whatsapp_message + append_to_examples_file definitions
-      approval.ts          # approval gate: Dispatch integration or readline CLI fallback
+      approval.ts          # approval gate: readline CLI (default) or UX chosen in Unit 2
       system-prompt.ts     # builds cached two-block system prompt from core + examples
     storage/
       examples.ts          # read/append approved-responses.md; on-startup load
-      graduation.ts        # edit-rate calculation logic
     types.ts               # shared TypeScript interfaces (ApprovalDecision, BotTurn, etc.)
     index.ts               # process entry point: wires connection + agent, starts bot
   config/
     system-prompt-core.md  # David's voice principles, persona, scope rules (committed)
-    bot-config.json        # { autonomousMode: false, approvalTimeoutMs: 1800000 }
+    bot-config.json        # { autonomousMode: false, approvalTimeoutMs: 1800000, ... }
   data/
     approved-responses.md  # gitignored; runtime memory file
     approved-responses-seed.md  # committed seed from pre-work examples (anonymized)
   scripts/
-    graduation-check.ts    # prints edit rate over last 20 decisions; one-shot script
-    dispatch-spike.ts      # Phase 2 only: standalone Dispatch verification script
+    # graduation-check.ts: deferred post-MVP
   docs/
     brainstorms/           # existing
     plans/                 # this file
@@ -214,10 +216,10 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
 - Create: `config/bot-config.json`
 
 **Approach:**
-- `package.json`: `"type": "module"` (required by Baileys v7). Scripts: `build` (tsc), `dev` (tsx watch src/index.ts), `start` (node dist/index.js). Dependencies: `@whiskeysockets/baileys`, `@anthropic-ai/sdk`, `@hapi/boom`, `@cacheable/node-cache`, `pino`, `zod`. Dev: `typescript`, `tsx`, `@types/node`.
+- `package.json`: `"type": "module"` (required by Baileys v7). Scripts: `build` (tsc), `dev` (tsx watch src/index.ts), `start` (node dist/index.js). Dependencies: `@whiskeysockets/baileys`, `@anthropic-ai/sdk`, `@hapi/boom`, `node-cache`, `pino`, `zod`. Dev: `typescript`, `tsx`, `@types/node`.
 - Node 20+ is required (Baileys v7 hard constraint). Note this in `.env.example` and README.
-- `tsconfig.json`: `"module": "ESNext"`, `"moduleResolution": "Bundler"`, `"target": "ES2022"`, `"outDir": "dist"`, `"strict": true`.
-- `bot-config.json`: `{ "autonomousMode": false, "approvalTimeoutMs": 1800000, "maxContextMessages": 15, "queueDepthMax": 1 }`. This file is committed; it is not secret.
+- `tsconfig.json`: `"module": "NodeNext"`, `"moduleResolution": "NodeNext"`, `"target": "ES2022"`, `"outDir": "dist"`, `"strict": true`. (`NodeNext` pairs correctly with Node 20 native ESM; `Bundler` mode accepts extensionless imports that Node's resolver rejects at runtime.)
+- `bot-config.json`: `{ "autonomousMode": false, "approvalTimeoutMs": 1800000, "maxContextMessages": 15, "queueDepthMax": 1, "maxInboundMessageChars": 2000, "allowedGroupJids": [] }`. This file is committed; it is not secret. `allowedGroupJids` is populated after the bot joins the group and the JID is discovered (see Unit 3).
 - `.env.example`: `ANTHROPIC_API_KEY=`, `BOT_PHONE_NUMBER=` (the throwaway SIM number, for context/logging only).
 - `pm2.config.js`: `name: "solicited-advice"`, `script: "dist/index.js"`, `exp_backoff_restart_delay: 100`, `max_restarts: 10`.
 - `src/types.ts`: Define shared interfaces: `AgentTurn`, `ApprovalDecision` (approved | edited | rejected | timeout), `PendingApproval`, `ApprovedEntry`.
@@ -234,32 +236,31 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
 
 ---
 
-- [ ] **Unit 2: Claude Desktop Dispatch Verification Spike**
+- [ ] **Unit 2: Approval UX Spike**
 
-**Goal:** Verify whether Claude Desktop Dispatch supports editing a draft message before approving it. This is the highest-uncertainty dependency — the entire approval UX architecture depends on the answer. This unit produces a decision, not production code.
+**Goal:** Determine the best approval UX for the Branch B scenario (readline CLI is the working default; this spike investigates whether a better mobile-friendly alternative is worth the extra build time before implementing Unit 6). This unit produces a decision, not production code.
+
+**Context:** Claude Desktop Dispatch cannot intercept tool calls made by an external `@anthropic-ai/sdk` process — it only works within Claude Desktop's own session. Branch A is not viable. Branch B (readline CLI) is the default implementation. This spike evaluates whether a better alternative (e.g., Telegram bot, localhost web UI) is worth building before moving to Unit 6.
 
 **Requirements:** R3 (approval UX)
 
 **Dependencies:** Unit 1
 
 **Files:**
-- Create: `scripts/dispatch-spike.ts` (temporary; delete or archive after decision)
+- No new files required (investigation only; may produce a small prototype script if needed)
 
 **Approach:**
-- Write a minimal standalone script that:
-  1. Calls `client.messages.create()` with a single mock tool (`send_test_message`) that represents the approval-gate intercept
-  2. Triggers a Dispatch notification
-  3. Observes whether David can edit the draft text from the Dispatch UI before approving
-- This does NOT connect to Baileys or WhatsApp. It is a pure API/Dispatch test.
-- **Decision gate**: After running the spike, record the result in `docs/brainstorms/2026-04-17-mvp-bot-brainstorm.md` under "Dispatch edit-flow verification." The result determines which branch Unit 6 implements:
-  - **Dispatch supports editing**: Unit 6 builds the full Dispatch integration in `approval.ts`
-  - **Dispatch approve/reject only (no editing)**: Unit 6 builds the readline CLI fallback. Draft text is printed to the terminal; David types the approved/edited version. This is the 2–4 hour fallback the brainstorm mentions.
+- Evaluate each alternative against two criteria: (1) Can David approve/edit/reject from his phone while away from the laptop? (2) Is the build effort justified before the hypothesis is validated?
+- **Candidate A — readline CLI (default)**: David approves at the terminal where the bot is running. Works only when David is at his laptop. Build time: ~2–4 hours. Sufficient for MVP if David is usually nearby during group activity hours.
+- **Candidate B — Telegram bot**: Bot sends a Telegram message to David with the draft; David replies `a`, `e [edited text]`, or `r`. Mobile-friendly. Build time: ~4–8 hours. Requires a Telegram bot token.
+- **Candidate C — localhost web UI**: A minimal Express/Hono page at `localhost:3001` with approve/edit/reject buttons. David uses a VPN or SSH tunnel to access it from his phone. Build time: ~6–10 hours. More infrastructure.
+- **Decision gate**: After evaluating the candidates, David picks one and records the decision in the brainstorm doc under "Approval UX spike result." Unit 6 implements the chosen branch. **If no decision is reached within 30 minutes of starting the spike, default to readline CLI** — shipping matters more than optimal approval UX at this stage.
 
 **Test scenarios:**
-- Test expectation: none — this is a human-in-the-loop verification spike, not automated code.
+- Test expectation: none — this is a human judgment call, not automated code.
 
 **Verification:**
-- The decision is documented. Unit 6 can proceed with a clear target.
+- The chosen UX is documented. Unit 6 can proceed with a clear target.
 
 ---
 
@@ -291,6 +292,7 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
 - `shouldSyncHistoryMessage: () => false` and `syncFullHistory: false` — skip the initial history dump; the rolling buffer handles context.
 - `printQRInTerminal` is deprecated in v7. Generate QR with the `qrcode` npm package and render to terminal.
 - Add `baileys_auth_info/` to Windows Defender exclusions (note in README) to avoid EBUSY errors on credential writes.
+- **Group JID discovery**: On first connect, log all group JIDs the throwaway account is a member of (iterate `sock.groupFetchAllParticipating()` or listen for `groups.update` on startup). David copies the target JID into `config/bot-config.json` under `allowedGroupJids`. The message handler checks this allowlist before dispatching any agent turn — the bot ignores groups not in the list.
 - Export: `startConnection(onMessage)` where `onMessage` is a callback invoked for each `messages.upsert` event.
 
 **Patterns to follow:** Baileys `example.ts` canonical reference on GitHub.
@@ -333,7 +335,7 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
 - The buffer is in-memory only; loss on restart is acceptable.
 
 `message-handler.ts`:
-- Use `sock.ev.process()` (not `.on()`) for batch-safe event handling.
+- Use `sock.ev.on('messages.upsert', ({ messages, type }) => { ... })` for event handling. (`sock.ev.process()` does not exist in Baileys v7; `.on()` is the correct API.)
 - For each message in `messages.upsert` where `type === 'notify'`:
   1. Skip `msg.key.fromMe === true`.
   2. Skip messages with a `messageTimestamp` older than 5 minutes — Baileys replays unread messages on reconnect, and re-triggering a stale @mention would generate a duplicate approval request. This guard must run before any agent dispatch.
@@ -343,6 +345,7 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
   6. If both group and @mention checks pass, dispatch to the agent turn queue.
 - **Concurrent @mention queue**: a simple per-group boolean `isProcessing`. If `isProcessing` is false, start an agent turn. If true and queue is empty, enqueue. If true and queue is non-empty (second concurrent mention), send a polite holding message (`"I'm working on another reply — please re-mention me in a moment"`) directly via `sock.sendMessage` (no approval gate — this is a system message, not advice) and drop the third mention. The holding message bypasses the approval gate because it contains no advice content.
 - Extract message text: check `msg.message.conversation`, `msg.message.extendedTextMessage?.text`, `msg.message.imageMessage?.caption` in that order.
+- **Input size guard**: Truncate inbound message text to `config.maxInboundMessageChars` characters before passing to the agent (add to `bot-config.json`, suggested default: 2000). Prevents oversized inputs from bloating context and reduces prompt-injection surface.
 - Context assembly: `buffer.getRecent(groupJid, config.maxContextMessages)` filtered to text-bearing messages only (skip media-only entries that have no caption or useful text content).
 
 **Patterns to follow:** Baileys receiving-updates docs; `sock.ev.process()` batch handler pattern.
@@ -394,7 +397,7 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
 `tools.ts`:
 - Two tool definitions as `Anthropic.Tool[]` (raw JSON Schema — compatible with the manual loop).
 - `send_whatsapp_message`: `{ message_text: string, recipient_jid: string }`. Description must state that this tool sends a WhatsApp message and requires human approval before execution.
-- `append_to_examples_file`: `{ question: string, response: string, person?: string, status: "approved" | "edited" | "rejected", original_draft?: string }`. Auto-approved (no gate).
+- `append_to_examples_file`: `{ question: string, response: string, person?: string, status: "approved" | "edited" | "rejected", original_draft?: string }`. Auto-approved (no gate). When the agent calls this tool, `agent/index.ts` calls `storage.appendEntry()` (defined in Unit 7) directly — there is no readline prompt or Dispatch notification. The tool handler is wired in Unit 9.
 - Export: `tools` array, `APPROVAL_REQUIRED_TOOLS: Set<string>` = `new Set(["send_whatsapp_message"])`.
 
 `agent/index.ts`:
@@ -450,25 +453,20 @@ The system prompt is built once at startup as two `TextBlockParam` blocks with `
 
 `approval.ts` exports `createApprovalGate(sock, config): ApprovalGateFn` where `ApprovalGateFn = (toolName, toolInput) => Promise<ToolCallResult>`.
 
-Common to both branches:
+**Default implementation — readline CLI** (unless Unit 2 selects a different UX):
 - Wrap the human-response await in a `Promise.race` against a `setTimeout` of `config.approvalTimeoutMs` (30 minutes).
 - On timeout: log `[TIMEOUT] approval expired for turn at [timestamp]`, return `{ approved: false, reason: "timeout" }`. Do not send to WhatsApp.
 - Log all decisions to console: `[APPROVED]`, `[EDITED]`, `[REJECTED]`, `[TIMEOUT]` with timestamp and a truncated draft preview (first 80 chars).
-
-**Branch A — Dispatch integration** (if Unit 2 confirms edit support):
-- Dispatch is already the approval UX when Claude Desktop intercepts the tool call. The `send_whatsapp_message` tool definition in `tools.ts` is what Dispatch surfaces to David. No additional code is needed in `approval.ts` for the basic approve/reject flow.
-- For draft editing from Dispatch: capture the edited text from the tool result that Dispatch returns. If the returned `message_text` differs from the original input, mark the decision as `edited`.
-- The approval gate in this branch is thin: detect diff between input and returned text, assign status, then call `sock.sendMessage`.
-
-**Branch B — readline CLI fallback** (if Unit 2 shows Dispatch edit-flow is not supported):
 - Print the draft to the terminal in a clearly formatted block.
 - Prompt: `[a]pprove / [e]dit / [r]eject (30 min timeout) > `.
 - If `a`: call `sock.sendMessage` with original text.
 - If `e`: prompt for replacement text (`Enter new message text (blank line to finish):`), then call `sock.sendMessage` with edited text.
 - If `r`: return tool result `"User rejected. Do not retry."`.
-- Use `readline.createInterface` with `process.stdin` / `process.stdout`. Close the interface after each decision to avoid blocking the event loop. **Important:** Branch B is single-threaded for approvals — only one readline prompt is active at a time. The queue-depth-1 constraint in Unit 4 is load-bearing for this reason: the queued turn fires its approval gate only after the first resolves, preventing interleaved prompts on the same stdin.
+- Use `readline.createInterface` with `process.stdin` / `process.stdout`. Close the interface after each decision to avoid blocking the event loop. **Important:** Readline is single-threaded for approvals — only one prompt is active at a time. The queue-depth-1 constraint in Unit 4 is load-bearing for this reason: the queued turn fires its approval gate only after the first resolves, preventing interleaved prompts on the same stdin.
 
-After decision in both branches:
+**If Unit 2 selects Telegram bot or localhost web UI:** the `ApprovalGateFn` interface is the same; only the internal implementation changes. The timeout, logging, and `storage.appendEntry` wiring are identical.
+
+After decision:
 - Call `storage.appendEntry(decision)` (Unit 7) to record the outcome.
 - Return the appropriate `ToolCallResult` string back to the agent loop.
 
@@ -482,7 +480,7 @@ After decision in both branches:
 - Integration: after approval, `storage.appendEntry` is called with the correct status and text
 
 **Verification:**
-- Running a manual end-to-end test (Baileys connected, real @mention in test group) produces a terminal prompt (Branch B) or Dispatch notification (Branch A) before any WhatsApp message is sent
+- Running a manual end-to-end test (Baileys connected, real @mention in test group) produces the approval prompt (terminal or chosen UX from Unit 2) before any WhatsApp message is sent
 - Approving sends the message to the test group within 5 seconds
 - Rejecting sends nothing; the group is silent
 
@@ -502,6 +500,8 @@ After decision in both branches:
 - Test: `src/storage/examples.test.ts`
 
 **Approach:**
+
+**Terminology**: `approved-responses.md` stores all decisions — approved, edited, and rejected. Individual items are called **entries**. The word **examples** is reserved for the content loaded into the system prompt block (typically all entries including rejected, since rejected drafts still inform voice quality). `examples.ts` is the module name for historical reasons but it reads and writes the full entry set, not a filtered subset.
 
 **File schema** — each entry uses a parseable heading and standard fields:
 
@@ -544,71 +544,19 @@ I would share some podcasts...
 **Verification:**
 - After the first test approval, `cat data/approved-responses.md` shows the entry with correct heading format
 - `loadExamples` on a fresh clone (no runtime file) returns the seed content
-- The graduation script (Unit 8) can parse the headings and count statuses correctly
+- `loadExamples` on a fresh clone (no runtime file) returns the seed content
 
 ---
 
-- [ ] **Unit 8: Graduation Metric Script**
-
-**Goal:** One-shot script that reads `approved-responses.md`, finds the last 20 decisions, and prints the edit rate. Tells David whether the bot has earned autonomous mode.
-
-**Requirements:** R5
-
-**Dependencies:** Unit 7
-
-**Files:**
-- Create: `src/storage/graduation.ts`
-- Create: `scripts/graduation-check.ts`
-- Test: `src/storage/graduation.test.ts`
-
-**Approach:**
-
-`graduation.ts`:
-- `parseEntries(fileContent: string): ApprovedEntry[]` — parse all entries from the file by scanning for `##` headings matching the `## [date] · [alias] · [status]` pattern.
-- `computeEditRate(entries: ApprovedEntry[], windowSize = 20): { editRate: number, total: number, edited: number, approved: number, rejected: number }` — take the last `windowSize` entries; compute edit rate as `edited / (approved + edited)`. Rejections are counted in `total` but excluded from the denominator (edit rate measures draft quality among sent responses).
-- `GRADUATION_THRESHOLD = 0.20` (20%).
-
-`graduation-check.ts`:
-- Reads `data/approved-responses.md`.
-- Calls `parseEntries` and `computeEditRate`.
-- Prints a human-readable report:
-  ```
-  === Graduation Check ===
-  Last 20 decisions: 18 sent (12 approved, 6 edited), 2 rejected
-  Edit rate: 33% (6/18) — threshold: 20%
-  Status: NOT READY for autonomous mode
-  ```
-  Or:
-  ```
-  Edit rate: 15% (3/20) — threshold: 20%
-  Status: READY — consider flipping autonomousMode in config/bot-config.json
-  ```
-- Exits with code 0 in both cases (informational script, not a CI gate).
-
-**Patterns to follow:** Simple Node.js script with `fs.readFileSync`; no framework needed.
-
-**Test scenarios:**
-- Happy path: 20 entries with 3 `edited` → edit rate = 15%, status READY
-- Happy path: 20 entries with 5 `edited` → edit rate = 25%, status NOT READY
-- Edge case: fewer than 20 entries total — compute over all available entries; print "(only N decisions recorded)" in the report
-- Edge case: all entries are `rejected` — edited / (approved + edited) = 0/0; print "no sent responses yet" instead of NaN
-- Edge case: `approved-responses.md` does not exist — print "no data yet" and exit cleanly
-- Edge case: file exists but contains zero parseable headings — same as above
-
-**Verification:**
-- `npx tsx scripts/graduation-check.ts` runs and prints a readable report on a file with the seed entries
-- The parsed entry count matches a manual count of `##` headings in the file
-- The report correctly identifies READY vs NOT READY based on the threshold
-
----
-
-- [ ] **Unit 9: Integration Wiring (Entry Point)**
+- [ ] **Unit 8: Integration Wiring (Entry Point)**
 
 **Goal:** Wire all units together in `src/index.ts`. The running bot: starts Baileys, loads examples, builds the system prompt, listens for @mentions, runs agent turns, applies the approval gate, appends to storage. A complete end-to-end turn should work before the Windows smoke test.
 
-**Requirements:** All (R1–R8)
+*(Previously Unit 9 — renumbered after graduation metric unit was deferred to post-MVP.)*
 
-**Dependencies:** Units 3–8 complete
+**Requirements:** All (R1–R7)
+
+**Dependencies:** Units 3–7 complete
 
 **Files:**
 - Create: `src/index.ts`
@@ -620,8 +568,7 @@ I would share some podcasts...
 - Call `buildSystemBlocks(examplesContent)` (Unit 5) once; store the result.
 - Call `startConnection(onMessage)` (Unit 3); pass message handler.
 - `onMessage` callback calls the Unit 4 message handler, which calls `runAgentTurn` with the real `onToolCall` from Unit 6.
-- Graceful shutdown: `process.on('SIGINT', ...)` — close the Baileys socket cleanly before exit. `process.on('SIGTERM', ...)` for completeness, but PM2 uses SIGINT on Windows.
-- No SIGTERM dependency for graceful shutdown — Windows does not reliably deliver SIGTERM from Task Scheduler or PM2 stop.
+- Graceful shutdown: register handlers for both `process.on('SIGINT', ...)` and `process.on('SIGTERM', ...)`. Extract cleanup into a shared function called by both. PM2's Windows signal behavior varies across versions and shutdown paths; registering both ensures clean socket closure under PM2 stop, Task Scheduler, and Ctrl+C.
 
 **Test scenarios:**
 - Integration: mocked Baileys socket delivers a mock @mention → agent runs → mock `onToolCall` is called with `"send_whatsapp_message"` tool → `storage.appendEntry` is called
@@ -639,13 +586,15 @@ I would share some podcasts...
 
 ---
 
-- [ ] **Unit 10: Windows Smoke Test and PM2 Setup**
+- [ ] **Unit 9: Windows Smoke Test and PM2 Setup**
 
 **Goal:** Validate the bot runs stably on the Windows laptop under realistic conditions. Configure PM2 for crash recovery. Document any Windows-specific setup steps.
 
-**Requirements:** R6
+*(Previously Unit 10 — renumbered after graduation metric unit was deferred to post-MVP.)*
 
-**Dependencies:** Unit 9
+**Requirements:** R5
+
+**Dependencies:** Unit 8
 
 **Files:**
 - Modify: `pm2.config.js` (finalize with correct paths and env)
@@ -656,7 +605,9 @@ I would share some podcasts...
 **PM2 setup:**
 - `pm2 start pm2.config.js` — start the bot process.
 - `pm2 save` — persist the process list.
-- `pm2 startup` — generate a Windows startup script (requires admin in some configurations). If `pm2 startup` is insufficient, document the Task Scheduler fallback: create a task that runs `pm2 resurrect` on user login.
+- **`pm2 startup` does not produce a functional Windows reboot-recovery entry** (it emits systemd/launchd instructions). Use one of:
+  - `npm install -g pm2-windows-startup && pm2-startup install` (recommended — integrates with Windows startup)
+  - Manual Task Scheduler fallback: create a task that runs `pm2 resurrect` on user login, triggered at log-on for the current user.
 - Test crash recovery: `pm2 stop solicited-advice` then wait for PM2 to restart with exponential backoff.
 
 **Windows-specific validation checklist (not automated):**
@@ -668,7 +619,7 @@ I would share some podcasts...
 
 **Pre-"AI Curious" validation:**
 - Run the bot in a personal test group for at least 24 hours before introducing it to the "AI Curious" group
-- Verify: reconnects after Windows sleep/wake; no duplicate messages on reconnect; approval gate works across phone and desktop Dispatch/CLI
+- Verify: reconnects after Windows sleep/wake; no duplicate messages on reconnect; approval gate (chosen in Unit 2) works as expected
 - Send the group onboarding message (see Deferred — content TBD) manually on first day
 
 **Test scenarios:**
@@ -688,7 +639,7 @@ I would share some podcasts...
 - **Error propagation:** Errors inside `runAgentTurn` are caught at the agent loop boundary and logged to console. They do not propagate to the Baileys event handler, so the bot stays alive and continues processing future messages. Errors in `appendEntry` are caught and logged without re-throwing.
 - **State lifecycle risks:** The rolling message buffer is lost on process restart. Baileys delivers unread messages on reconnect; these will be buffered but may trigger agent turns if they contain @mentions. Guard: only process messages with a timestamp within the last 5 minutes on reconnect (prevents re-drafting stale @mentions).
 - **API surface parity:** No HTTP API surface in MVP. All interaction is via WhatsApp and the console/Dispatch approval UI.
-- **Integration coverage:** The key cross-layer scenario that unit tests alone cannot prove is: a real WhatsApp @mention → Baileys event → agent turn → approval prompt → message send → file append. This is validated by Unit 9's end-to-end test in a real test group.
+- **Integration coverage:** The key cross-layer scenario that unit tests alone cannot prove is: a real WhatsApp @mention → Baileys event → agent turn → approval prompt → message send → file append. This is validated by Unit 8's end-to-end test in a real test group.
 - **Unchanged invariants:** David's personal WhatsApp account is never touched. `approved-responses.md` is append-only during normal operation (no edits, no deletes). The `config/bot-config.json` autonomousMode flag starts as `false` and is only changed manually.
 
 ## Risks & Dependencies
@@ -696,7 +647,7 @@ I would share some podcasts...
 | Risk | Mitigation |
 |------|------------|
 | Baileys v7 LID @mention detection fails silently | Detect by testing in real group; compare on number portion before `@` not full JID; log all incoming mentions for debugging |
-| Claude Desktop Dispatch does not support draft editing | Unit 2 spike verifies this before any other build; CLI fallback is scoped and ready to implement in Unit 6 |
+| Approval UX choice (readline CLI vs. Telegram bot vs. localhost web) | Unit 2 spike evaluates options; readline CLI is the default if no alternative justifies the extra build time |
 | WhatsApp bans the throwaway account during development | Use `fetchLatestBaileysVersion()` on every startup; `cachedGroupMetadata` to avoid metadata-API hammering; avoid sending too many messages in rapid succession during testing |
 | Windows Defender EBUSY errors on auth file writes | Exclusion list documented in README and smoke-test checklist |
 | Approval timeout fires while David is traveling / asleep | 30-min timeout is documented and expected; the group never sees a "bot is thinking" message so stale approvals are invisible |

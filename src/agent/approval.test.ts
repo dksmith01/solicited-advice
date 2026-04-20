@@ -27,7 +27,6 @@ const TEST_CONFIG: BotConfig = {
   maxContextMessages: 10,
   queueDepthMax: 5,
   maxInboundMessageChars: 2000,
-  allowedGroupJids: [],
 };
 
 // ---------------------------------------------------------------------------

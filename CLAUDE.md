@@ -64,7 +64,7 @@ Quick reference — see brainstorm doc for rationale:
 - **Quoted replies**: `sock.sendMessage(jid, { text }, { quoted: originalMsg })` — third arg is the options object
 - Correct cache package: `node-cache` (not `@cacheable/node-cache` — that's a different library with a different API)
 - ESM config: `"module": "NodeNext"`, `"moduleResolution": "NodeNext"` — `"Bundler"` accepts extensionless imports that Node's ESM resolver rejects at runtime; all local imports need explicit `.js` extensions
-- Reboot recovery on Windows: `pm2 startup` emits systemd instructions — use `npm i -g pm2-windows-startup && pm2-startup install` or a Task Scheduler task running `pm2 resurrect`
+- Reboot recovery on Windows: use `npm i -g pm2-windows-startup && npx pm2-windows-startup install && pm2.cmd save` (see Process Management section below)
 - Prompt cache minimum: 1024 tokens per block for Sonnet (2048 applies to Opus); `cache_control` only accepts `{ type: "ephemeral" }` — no `ttl` field
 - Group JID allowlist: bot uses `allowedGroupJids` in `bot-config.json`; discover the JID via `sock.groupFetchAllParticipating()` on first run and copy it into config
 
@@ -80,6 +80,16 @@ Quick reference — see brainstorm doc for rationale:
 - **Main branch only** — no feature branches until coding begins.
 - Push to `main` directly for all changes during the planning phase.
 - `.claude/settings.local.json` and `approved-responses.md` are gitignored (local preferences and real friend conversations should not be in a public repo).
+
+## Process Management (PM2 on Windows)
+
+- Use `pm2.cmd` not `pm2` — the binary isn't in PATH by default on Windows
+- Start the bot: `pm2.cmd start node --name solicited-advice -- dist/index.js` (`pm2 start npm -- run start` fails on Windows)
+- Always build first: `npm run build` then start via `dist/index.js` (`npm run dev` uses `tsx watch` and is dev-only)
+- If `pm2-windows-startup` isn't in PATH: `npx pm2-windows-startup install`
+- After any process changes: `pm2.cmd save` to persist across reboots
+- Check bot status: `pm2.cmd list` (status `online` = running)
+- View logs: `pm2.cmd logs solicited-advice`
 
 ## Tech Constraints
 

@@ -30,3 +30,7 @@ data/approved-responses.md
 # Real friend conversations produced by the compounding loop.
 # Must be anonymized before any commit if ever shared.
 approved-responses.md
+
+# Session diary — local only
+DIARY.md
+DIARY.csv

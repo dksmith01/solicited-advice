@@ -109,8 +109,6 @@ export function createApprovalGate(
 
     // Format the Telegram prompt.
     const prompt = [
-      "📨 Draft WhatsApp reply:",
-      "",
       messageText,
       "",
       "Reply with:",

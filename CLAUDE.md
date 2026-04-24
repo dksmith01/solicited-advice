@@ -43,6 +43,12 @@ MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-br
 - Tightened system prompt: refusals/redirects/ethics blocks must also go through `send_whatsapp_message` — Claude was silently dropping them
 - Added "words to never use" list to David's Voice section ("Honestly", "Frankly", etc.)
 
+**Session learnings (2026-04-24):**
+- Voice rules (never-use phrases, interaction patterns) live in `config/system-prompt-core.md` — edit there, not in code
+- Telegram approval prompt format (what David sees) is assembled in `src/agent/approval.ts` in the `prompt` array (~line 111)
+- Bot was opening replies with "Good question!" — added sycophantic opener ban to system prompt's never-use list
+- Bot was asking conversation-stimulating follow-up questions — tightened clarifying-question rule: only ask if genuinely needed, never to prompt discussion
+
 ## Key Decisions (MVP)
 
 Quick reference — see brainstorm doc for rationale:
@@ -66,7 +72,7 @@ Quick reference — see brainstorm doc for rationale:
 - ESM config: `"module": "NodeNext"`, `"moduleResolution": "NodeNext"` — `"Bundler"` accepts extensionless imports that Node's ESM resolver rejects at runtime; all local imports need explicit `.js` extensions
 - Reboot recovery on Windows: use `npm i -g pm2-windows-startup && npx pm2-windows-startup install && pm2.cmd save` (see Process Management section below)
 - Prompt cache minimum: 1024 tokens per block for Sonnet (2048 applies to Opus); `cache_control` only accepts `{ type: "ephemeral" }` — no `ttl` field
-- Group JID allowlist: bot uses `allowedGroupJids` in `bot-config.json`; discover the JID via `sock.groupFetchAllParticipating()` on first run and copy it into config
+- Group JID allowlist: bot uses `ALLOWED_GROUP_JIDS` in `.env` (comma-separated); discover the JID via `sock.groupFetchAllParticipating()` on first run and copy it into `.env`
 
 ## Agent Loop Gotchas
 

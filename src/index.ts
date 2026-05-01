@@ -19,9 +19,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { WAMessage, WASocket } from "@whiskeysockets/baileys";
 import type { BotConfig, AgentTurn } from "./types.js";
-import { startConnection } from "./bot/connection.js";
+import { startConnection, getCurrentSocket } from "./bot/connection.js";
 import { MessageBuffer } from "./bot/message-buffer.js";
-import { createMessageHandler } from "./bot/message-handler.js";
+import { createMessageHandler, type MessageHandler } from "./bot/message-handler.js";
 import { runAgentTurn } from "./agent/index.js";
 import { buildSystemBlocks } from "./agent/system-prompt.js";
 import { createApprovalGate } from "./agent/approval.js";
@@ -80,21 +80,14 @@ const buffer = new MessageBuffer();
 //    Pass a getMessageFn that consults the buffer for Baileys' retry logic.
 // ---------------------------------------------------------------------------
 
-// Placeholder onMessage — replaced once createMessageHandler is called.
-// We need the socket first, so we wire the real handler after startConnection.
-let messageHandlerRegistered = false;
+// Message handler — set after startConnection resolves. Until then, we buffer.
+let messageHandler: MessageHandler | null = null;
 
-// This is the callback Baileys fires on every messages.upsert event.
-// It routes to the real handler once wiring is complete.
 function onMessage(messages: WAMessage[], type: string): void {
-  // The real handler is registered directly on sock.ev in createMessageHandler,
-  // so this top-level callback is only used for buffer population before the
-  // handler is set up. In practice, createMessageHandler is called synchronously
-  // after startConnection resolves, so this path is rarely hit.
-  if (!messageHandlerRegistered) {
-    for (const msg of messages) {
-      buffer.push(msg);
-    }
+  if (messageHandler) {
+    messageHandler(messages, type);
+  } else {
+    for (const msg of messages) buffer.push(msg);
   }
 }
 
@@ -113,7 +106,7 @@ const sock: WASocket = await startConnection(onMessage, async (key) => {
 let currentQuotedMessage: WAMessage | undefined;
 
 const approvalGate = createApprovalGate(
-  sock,
+  getCurrentSocket,
   config,
   async (entry) => appendEntry(entry),
   () => currentQuotedMessage
@@ -160,8 +153,7 @@ const allowedGroupJids = (process.env.ALLOWED_GROUP_JIDS ?? "")
   .map((s) => s.trim())
   .filter(Boolean);
 
-createMessageHandler(sock, buffer, config, botJids, allowedGroupJids, onAgentTurn);
-messageHandlerRegistered = true;
+messageHandler = createMessageHandler(getCurrentSocket, buffer, config, botJids, allowedGroupJids, onAgentTurn);
 
 console.log(`[startup] Bot ready. JID: ${botJid || "(pending QR scan)"}`);
 
@@ -172,7 +164,7 @@ console.log(`[startup] Bot ready. JID: ${botJid || "(pending QR scan)"}`);
 function cleanup(): void {
   console.log("[shutdown] Closing WhatsApp connection…");
   try {
-    sock.end(undefined);
+    getCurrentSocket().end(undefined);
   } catch (err) {
     console.error("[shutdown] Error closing socket:", err);
   }

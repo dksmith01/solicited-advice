@@ -1,0 +1,5 @@
+type: coding
+sensitivity: low
+domain: [whatsapp-bot, ai-agent, claude, typescript]
+brains:
+  - david-brain

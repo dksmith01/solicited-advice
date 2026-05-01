@@ -13,6 +13,8 @@ import { isJidGroup, type WAMessage, type WASocket } from "@whiskeysockets/baile
 import type { AgentTurn, BotConfig } from "../types.js";
 import type { MessageBuffer } from "./message-buffer.js";
 
+export type MessageHandler = (messages: WAMessage[], type: string) => void;
+
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
@@ -47,22 +49,27 @@ function extractText(msg: WAMessage): string {
 }
 
 /**
- * Register a messages.upsert handler on the socket.
+ * Create a message handler function that processes incoming messages.
  *
- * @param sock          Live Baileys socket
- * @param buffer        Shared MessageBuffer instance
- * @param config        Runtime bot config
- * @param botJid        Full JID of the bot account (e.g. "15551234567:42@s.whatsapp.net")
- * @param onAgentTurn   Async callback invoked for each approved @mention
+ * Returns a (messages, type) function to be called from the connection's
+ * onMessage callback. Uses getSock() for outbound sends so it always
+ * references the live socket — surviving reconnects without re-wiring.
+ *
+ * @param getSock           Returns the current live Baileys socket
+ * @param buffer            Shared MessageBuffer instance
+ * @param config            Runtime bot config
+ * @param botJids           Bot JIDs to match against @mentions
+ * @param allowedGroupJids  Group allowlist
+ * @param onAgentTurn       Async callback invoked for each approved @mention
  */
 export function createMessageHandler(
-  sock: WASocket,
+  getSock: () => WASocket,
   buffer: MessageBuffer,
   config: BotConfig,
   botJids: string[],
   allowedGroupJids: string[],
   onAgentTurn: (turn: AgentTurn) => Promise<void>
-): void {
+): MessageHandler {
   // Extract the number portion from each bot JID (strips device suffix and domain).
   // Covers both phone JID (13056459014) and LID (225980358598881).
   const botNumbers = new Set(
@@ -90,7 +97,7 @@ export function createMessageHandler(
     }
   }
 
-  sock.ev.on("messages.upsert", ({ messages, type }) => {
+  return function handleMessages(messages: WAMessage[], type: string): void {
     // Only process real incoming notifications.
     if (type !== "notify") return;
 
@@ -160,10 +167,10 @@ export function createMessageHandler(
         queue.set(groupJid, turn);
       } else {
         // Both slots occupied — send holding message and drop.
-        void sock.sendMessage(groupJid, {
+        void getSock().sendMessage(groupJid, {
           text: "I'm working on another reply — please re-mention me in a moment",
         });
       }
     }
-  });
+  };
 }

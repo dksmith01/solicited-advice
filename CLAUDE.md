@@ -49,6 +49,16 @@ MVP architecture and scope are locked in [docs/brainstorms/2026-04-17-mvp-bot-br
 - Bot was opening replies with "Good question!" — added sycophantic opener ban to system prompt's never-use list
 - Bot was asking conversation-stimulating follow-up questions — tightened clarifying-question rule: only ask if genuinely needed, never to prompt discussion
 
+**Session learnings (2026-05-01):**
+- Baileys reconnect was leaking memory (2.1 GB in 2 days) — recursive `startSock` never ended old sockets. Fixed with module-level `currentSock` variable and `getCurrentSocket()` getter pattern
+- After reconnect, handlers went silently deaf — captured `sock` reference was stale. All consumers now use `getSock: () => WASocket` getter instead of direct reference
+- `pm2 restart` causes a WhatsApp "connection replaced" cascade — always use `pm2 stop` + wait + `pm2 start`
+- Repo connected to david-brain; first compound lesson promoted to vault
+
+## Documented Solutions
+
+`docs/solutions/` contains documented solutions to past problems (runtime errors, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
+
 ## Key Decisions (MVP)
 
 Quick reference — see brainstorm doc for rationale:
@@ -102,3 +112,81 @@ Quick reference — see brainstorm doc for rationale:
 - **Free/local-first**: prefer solutions that run locally or use free tiers before incurring cloud costs.
 - **Windows (Dell laptop)** — Claude Code, GitHub, and standard dev tools are installed. Laptop set to never sleep; auto-restart-on-reboot via Task Scheduler is a later concern.
 - **Lean startup approach**: build the smallest thing that validates the idea before scaling.
+
+<!-- BEGIN david-brain BRAIN CONNECTION -->
+## david-brain Brain
+
+This repo is connected to `david-brain`, a brain for cross-repo lessons, playbooks, conventions, pointers, and shared skills.
+
+At the start of significant work, search the configured brain for relevant lessons, playbooks, conventions, and client-safe context. Present useful hits briefly and let the user decide what to apply.
+
+When a compound workflow creates `docs/solutions/`, `docs/plans/`, or similar durable project knowledge, automatically notice the new output and offer to use `send-to-brain` to promote an enriched copy to the configured brain. The offer requires user approval before writing to the brain.
+
+Use `.brain-config` for this repo's sensitivity, domain tags, and configured brains.
+
+Use `/start` at the beginning of a session to check for a previous session handoff and choose how to proceed.
+
+## Coding Guidelines
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+### 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+<!-- END david-brain BRAIN CONNECTION -->

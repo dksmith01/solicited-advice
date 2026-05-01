@@ -1,148 +1,121 @@
-# solicited-advice
+# Solicited Advice
 
-An AI agent that lives in a WhatsApp group and answers AI questions in David's voice. Every response is reviewed via Telegram before it's sent.
+AI agent that lives in a WhatsApp group and answers AI questions in David's voice. Every response is reviewed via Telegram before it's sent.
 
 ## Prerequisites
 
 - **Node.js 20+** (required by Baileys v7). Check: `node --version`
-- **npm 10+**
-- A **throwaway WhatsApp account** on a prepaid SIM — never use your personal account
+- A **throwaway WhatsApp account** on a prepaid SIM -- never use your personal account
 - A **Telegram bot token** from [@BotFather](https://t.me/BotFather) and your personal Telegram chat ID
+- An **Anthropic API key** from [console.anthropic.com](https://console.anthropic.com)
+- A **Brave Search API key** (free tier, 2,000/month) from [brave.com/search/api](https://brave.com/search/api/)
 
 ## Setup
 
-### 1. Install dependencies
-
-```bash
+```sh
 npm install
-```
-
-### 2. Configure environment
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` with your keys:
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
-BOT_PHONE_NUMBER=+12125551234
-TELEGRAM_BOT_TOKEN=123456789:AAF...
-TELEGRAM_CHAT_ID=987654321
-```
-
-To find your Telegram chat ID: message your bot once, then visit
-`https://api.telegram.org/bot<TOKEN>/getUpdates` and look for `"chat":{"id":...}`.
-
-### 3. Configure allowed groups
-
-On first run the bot logs all group JIDs the throwaway account belongs to.
-Copy the target JID into `config/bot-config.json`:
-
-```json
-{
-  "allowedGroupJids": ["120363XXXXXXXXXX@g.us"]
-}
-```
-
-Leave the array empty to allow all groups (not recommended for production).
-
-### 4. Windows Defender exclusions (prevents EBUSY errors)
-
-Open PowerShell as Administrator and run:
-
-```powershell
-Add-MpPreference -ExclusionPath "$PWD\baileys_auth_info"
-Add-MpPreference -ExclusionPath "$PWD\data"
-```
-
-### 5. Build
-
-```bash
-npm run build
-```
+| Variable | Where to get it |
+|---|---|
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+| `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) on Telegram |
+| `TELEGRAM_CHAT_ID` | Message your bot, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` and look for `"chat":{"id":...}` |
+| `BRAVE_SEARCH_API_KEY` | [brave.com/search/api](https://brave.com/search/api/) |
+| `ALLOWED_GROUP_JIDS` | Found on first run (see below) |
 
 ## First run (QR pairing)
 
-```bash
-npm run dev
+```sh
+npm run build
+npm start
 ```
 
-A QR code will print in the terminal. Scan it with the **throwaway WhatsApp account** (not your personal account). Credentials are saved to `baileys_auth_info/` — subsequent starts connect without a QR scan.
+A QR code prints in the terminal. Scan it with the **throwaway WhatsApp account**. Credentials are saved to `baileys_auth_info/` -- subsequent starts connect without a QR scan.
 
-## Production (PM2)
+On first connection the bot logs all joined groups and their JIDs. Copy the target JID into `ALLOWED_GROUP_JIDS` in `.env`:
 
-### Install PM2
-
-```bash
-npm install -g pm2
 ```
+ALLOWED_GROUP_JIDS=120363XXXXXXXXXX@g.us
+```
+
+## Development
+
+```sh
+npm run dev      # start with hot reload (tsx watch)
+npm test         # run all tests
+npm run build    # compile TypeScript to dist/
+```
+
+## Production (PM2 on Windows)
+
+Use `pm2.cmd` on Windows -- the bare `pm2` command isn't in PATH by default.
 
 ### Start the bot
 
-```bash
-pm2 start pm2.config.js
-pm2 save
+```sh
+npm run build
+pm2.cmd start node --name solicited-advice -- dist/index.js
+pm2.cmd save
 ```
 
-### Windows reboot recovery
+### Common commands
 
-`pm2 startup` generates systemd/launchd commands that don't apply on Windows. Use one of:
-
-**Option A — pm2-windows-startup (recommended):**
-```bash
-npm install -g pm2-windows-startup
-pm2-startup install
+```sh
+pm2.cmd list                        # check status (should show "online")
+pm2.cmd logs solicited-advice       # tail live logs
+pm2.cmd restart solicited-advice    # restart after code changes
+pm2.cmd stop solicited-advice       # stop the bot
+pm2.cmd delete solicited-advice     # remove from PM2 entirely
 ```
 
-**Option B — Task Scheduler:**
-Create a task that runs `pm2 resurrect` on user login.
+### Reboot recovery
 
-### Useful PM2 commands
+```sh
+npm i -g pm2-windows-startup
+npx pm2-windows-startup install
+pm2.cmd save
+```
 
-```bash
-pm2 list                          # check status
-pm2 logs solicited-advice         # tail logs
-pm2 stop solicited-advice         # stop (PM2 will restart unless you pm2 delete)
-pm2 restart solicited-advice      # manual restart
+### Restart loop fix
+
+If the bot gets stuck in a restart loop (WhatsApp "connection replaced" cascade), stop first, then start:
+
+```sh
+pm2.cmd stop solicited-advice
+# wait 5 seconds
+pm2.cmd start solicited-advice
 ```
 
 ## Approval workflow
 
-When someone @mentions the bot in the WhatsApp group, a draft reply appears in your **Telegram** chat. Reply with:
+When someone @mentions the bot in the WhatsApp group, a draft reply appears in your Telegram chat. Reply with:
 
-- `a` — approve and send as-is
-- `e Your edited text here` — send with your edits
-- `r` — reject (nothing sent to WhatsApp)
+- **`a`** -- approve and send as-is
+- **`e Your edited text`** -- send with your edits
+- **`r`** -- reject (nothing sent); you'll be asked for a reason so Claude can retry
 
-Approvals expire after **30 minutes** — unanswered drafts are silently dropped.
+Unanswered drafts expire after 30 minutes.
 
-## Windows validation checklist
+## How it works
 
-Before introducing the bot to the real group, run it in a test group for 24+ hours and verify:
+1. Baileys connects to WhatsApp via WebSocket
+2. Bot detects `@Solicited-Advice` mentions in allowed groups
+3. Recent group messages are gathered as context
+4. Claude drafts a reply using David's voice guidelines and web search
+5. Draft goes to David's Telegram for approval
+6. Approved messages are posted as quoted replies in the group
 
-- [ ] AV exclusion: `baileys_auth_info/` and `data/` added to Windows Defender
-- [ ] Power plan: "High Performance" (prevents NIC sleep during idle)
-- [ ] USB suspend disabled: Device Manager → USB Root Hub → Power Management → uncheck "allow computer to turn off this device to save power"
-- [ ] PM2 reboot recovery configured (see above)
-- [ ] Bot reconnects after laptop sleep/wake (within ~60 seconds)
-- [ ] No duplicate messages on reconnect
-- [ ] `pm2 stop solicited-advice` cleanly closes the Baileys socket
-- [ ] 24-hour test run with no unhandled errors in `pm2 logs solicited-advice`
+## Project structure
 
-## Development
-
-```bash
-npm run dev      # tsx watch — auto-restarts on file changes
-npm run build    # compile TypeScript
-npm test         # run all tests
 ```
-
-## Backing up approved-responses.md
-
-`data/approved-responses.md` is gitignored (it contains real friend conversations). Back it up periodically:
-
-```bash
-cp data/approved-responses.md data/approved-responses-backup-$(date +%Y%m%d).md
+config/              bot-config.json, system-prompt-core.md (voice rules)
+src/
+  bot/               WhatsApp connection, message handling, buffering
+  agent/             Claude agent loop, approval gate, tools, web search
+  storage/           Examples corpus (approved responses)
+  index.ts           Entry point -- wires everything together
 ```

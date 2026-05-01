@@ -56,7 +56,7 @@ function aliasFromJid(jid: string): string {
  *   TELEGRAM_CHAT_ID    — David's personal chat ID (numeric string)
  */
 export function createApprovalGate(
-  sock: WASocket,
+  getSock: () => WASocket,
   config: BotConfig,
   appendEntry: (entry: ApprovedEntry) => Promise<void>,
   getQuotedMessage: () => WAMessage | undefined
@@ -189,7 +189,7 @@ export function createApprovalGate(
       console.log(
         `[EDITED] ${timestamp()} — draft: "${preview(messageText)}" → "${preview(editedText)}"`
       );
-      await sock.sendMessage(recipientJid, { text: editedText }, { quoted: getQuotedMessage() });
+      await getSock().sendMessage(recipientJid, { text: editedText }, { quoted: getQuotedMessage() });
       await appendEntry({
         date: dateStr,
         alias,
@@ -209,7 +209,7 @@ export function createApprovalGate(
     console.log(
       `[APPROVED] ${timestamp()} — draft: "${preview(messageText)}"`
     );
-    await sock.sendMessage(recipientJid, { text: messageText }, { quoted: getQuotedMessage() });
+    await getSock().sendMessage(recipientJid, { text: messageText }, { quoted: getQuotedMessage() });
     await appendEntry({
       date: dateStr,
       alias,

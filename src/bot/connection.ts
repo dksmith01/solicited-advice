@@ -29,6 +29,14 @@ const msgRetryCounterCache = new NodeCache({ stdTTL: 60 });
 // Group metadata cache — populated on group events so makeWASocket can use it.
 const groupMetaCache = new NodeCache({ stdTTL: 3600 });
 
+// Track the active socket so we can clean it up before reconnecting.
+let currentSock: WASocket | null = null;
+
+export function getCurrentSocket(): WASocket {
+  if (!currentSock) throw new Error("WhatsApp socket not initialized");
+  return currentSock;
+}
+
 // pino's Logger satisfies Baileys' ILogger interface structurally;
 // cast via unknown since ILogger isn't re-exported from the package root.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +68,12 @@ async function startSock(
   onMessage: (messages: WAMessage[], type: string) => void,
   getMessageFn: GetMessageFn
 ): Promise<WASocket> {
+  // Clean up previous socket to prevent memory leaks on reconnect.
+  if (currentSock) {
+    try { currentSock.end(undefined); } catch { /* already closed */ }
+    currentSock = null;
+  }
+
   const { state, saveCreds } = await useMultiFileAuthState("baileys_auth_info");
   const { version } = await fetchLatestBaileysVersion();
 
@@ -80,6 +94,8 @@ async function startSock(
     },
     getMessage: getMessageFn,
   });
+
+  currentSock = sock;
 
   // Persist credentials whenever they change.
   sock.ev.on("creds.update", saveCreds);

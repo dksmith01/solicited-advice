@@ -70,16 +70,15 @@ const TEST_CONFIG: BotConfig = {
 // logic directly so each test gets a clean, hermetic instance.
 // ---------------------------------------------------------------------------
 
+import type { WAMessage, WASocket } from "@whiskeysockets/baileys";
 import { MessageBuffer } from "./bot/message-buffer.js";
-import { createMessageHandler } from "./bot/message-handler.js";
+import { createMessageHandler, type MessageHandler } from "./bot/message-handler.js";
 
 /**
  * Build a wired bot instance using mock dependencies.
  *
- * @param sock           Pre-created mock socket.
- * @param onToolCall     Injected OnToolCallFn (replaces the real approval gate).
- * @param runAgentTurnFn Injected runAgentTurn (replaces the real Claude call).
- * @param appendEntryFn  Injected appendEntry (replaces the real file write).
+ * Returns a handleMessages function that tests call directly to simulate
+ * incoming messages (mirrors the onMessage callback in the real index.ts).
  */
 function createWiredBot(opts: {
   sock: MockSocket;
@@ -105,10 +104,8 @@ function createWiredBot(opts: {
   }
 
   const botJid = sock.user?.id ?? "";
-  createMessageHandler(
-    // Cast to WASocket for the real createMessageHandler — it only uses ev.on
-    // and sendMessage, both of which our mock provides.
-    sock as unknown as import("@whiskeysockets/baileys").WASocket,
+  const messageHandler: MessageHandler = createMessageHandler(
+    () => sock as unknown as WASocket,
     buffer,
     TEST_CONFIG,
     [botJid],
@@ -116,7 +113,12 @@ function createWiredBot(opts: {
     onAgentTurn
   );
 
-  return { buffer, sock };
+  function handleMessages(messages: WAMessage[], type: string): void {
+    for (const msg of messages) buffer.push(msg);
+    messageHandler(messages, type);
+  }
+
+  return { buffer, sock, handleMessages };
 }
 
 // ---------------------------------------------------------------------------
@@ -206,21 +208,21 @@ describe("index wiring", () => {
 
     const sock = makeMockSocket();
 
-    const { } = createWiredBot({
+    const { handleMessages } = createWiredBot({
       sock,
       onToolCall: mockOnToolCall,
       runAgentTurnFn: mockRunAgentTurn as unknown as typeof import("./agent/index.js").runAgentTurn,
       appendEntryFn: mockAppendEntry,
     });
 
-    // Fire a messages.upsert event — a fresh @mention.
+    // Fire a fresh @mention through the handler.
     const mention = makeMentionMessage({
       groupJid: "group-123@g.us",
       botJid: sock.user!.id,
       text: "@Solicited-Advice how do I get started with AI?",
     });
 
-    sock._emitter.emit("messages.upsert", { messages: [mention], type: "notify" });
+    handleMessages([mention], "notify");
 
     // Wait for the async agent turn to complete (process.nextTick + async chain).
     await new Promise<void>((resolve) => setTimeout(resolve, 50));

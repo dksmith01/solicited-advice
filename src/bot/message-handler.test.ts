@@ -10,47 +10,23 @@
 import { describe, test, mock, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { MessageBuffer } from "./message-buffer.js";
-import { createMessageHandler } from "./message-handler.js";
+import { createMessageHandler, type MessageHandler } from "./message-handler.js";
 import type { BotConfig, AgentTurn } from "../types.js";
-import type { WAMessage } from "@whiskeysockets/baileys";
+import type { WAMessage, WASocket } from "@whiskeysockets/baileys";
 
 // ---------------------------------------------------------------------------
 // Types and helpers
 // ---------------------------------------------------------------------------
 
-type UpsertPayload = { messages: WAMessage[]; type: string };
-type UpsertHandler = (payload: UpsertPayload) => void;
-
 interface MockSocket {
-  ev: {
-    on: ReturnType<typeof mock.fn>;
-    /** Fire the registered messages.upsert handler directly. */
-    emit: (payload: UpsertPayload) => void;
-  };
   sendMessage: ReturnType<typeof mock.fn>;
 }
 
 function makeMockSocket(): MockSocket {
-  let upsertHandler: UpsertHandler | null = null;
-
-  const evOn = mock.fn((event: string, handler: UpsertHandler) => {
-    if (event === "messages.upsert") {
-      upsertHandler = handler;
-    }
-  });
-
-  const sendMessage = mock.fn(
-    async (_jid: string, _content: unknown) => ({ key: { id: "sent-msg" } })
-  );
-
   return {
-    ev: {
-      on: evOn,
-      emit(payload: UpsertPayload) {
-        if (upsertHandler) upsertHandler(payload);
-      },
-    },
-    sendMessage,
+    sendMessage: mock.fn(
+      async (_jid: string, _content: unknown) => ({ key: { id: "sent-msg" } })
+    ),
   };
 }
 
@@ -109,6 +85,7 @@ describe("createMessageHandler", () => {
   let buffer: MessageBuffer;
   let agentTurnCalls: AgentTurn[];
   let onAgentTurn: (turn: AgentTurn) => Promise<void>;
+  let handler: MessageHandler;
 
   beforeEach(() => {
     sock = makeMockSocket();
@@ -123,8 +100,8 @@ describe("createMessageHandler", () => {
   // 1. A message with bot's JID in mentionedJid triggers onAgentTurn
   // -------------------------------------------------------------------------
   test("@mention triggers onAgentTurn with correct groupJid and mentionText", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -133,7 +110,7 @@ describe("createMessageHandler", () => {
     );
 
     const msg = makeMentionMsg();
-    sock.ev.emit({ messages: [msg], type: "notify" });
+    handler([msg], "notify");
 
     // Allow any microtask callbacks to settle.
     await new Promise((r) => setImmediate(r));
@@ -150,8 +127,8 @@ describe("createMessageHandler", () => {
   // 2. Non-@mention message is buffered but does NOT trigger onAgentTurn
   // -------------------------------------------------------------------------
   test("non-@mention message is buffered but does not trigger onAgentTurn", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -160,7 +137,7 @@ describe("createMessageHandler", () => {
     );
 
     const msg = makePlainMsg("just chatting");
-    sock.ev.emit({ messages: [msg], type: "notify" });
+    handler([msg], "notify");
     await new Promise((r) => setImmediate(r));
 
     assert.equal(agentTurnCalls.length, 0, "onAgentTurn should NOT be called");
@@ -172,8 +149,8 @@ describe("createMessageHandler", () => {
   // 3. msg.key.fromMe === true is silently skipped
   // -------------------------------------------------------------------------
   test("fromMe=true message is silently skipped (not buffered, not triggering agent)", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -182,7 +159,7 @@ describe("createMessageHandler", () => {
     );
 
     const msg = makeMentionMsg({ key: { remoteJid: GROUP_JID, id: "msg-from-me", fromMe: true } } as Partial<WAMessage>);
-    sock.ev.emit({ messages: [msg], type: "notify" });
+    handler([msg], "notify");
     await new Promise((r) => setImmediate(r));
 
     assert.equal(agentTurnCalls.length, 0, "fromMe message should not trigger agent");
@@ -194,8 +171,8 @@ describe("createMessageHandler", () => {
   // 4. Non-group message (individual JID) is silently skipped
   // -------------------------------------------------------------------------
   test("non-group (DM) message is silently skipped after buffering", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -214,7 +191,7 @@ describe("createMessageHandler", () => {
       },
     } as unknown as WAMessage;
 
-    sock.ev.emit({ messages: [dmMsg], type: "notify" });
+    handler([dmMsg], "notify");
     await new Promise((r) => setImmediate(r));
 
     assert.equal(agentTurnCalls.length, 0, "DM should not trigger agent");
@@ -236,8 +213,8 @@ describe("createMessageHandler", () => {
       });
     };
 
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -247,13 +224,13 @@ describe("createMessageHandler", () => {
 
     // First @mention — starts processing
     const msg1 = makeMentionMsg({ key: { remoteJid: GROUP_JID, id: "msg-1", fromMe: false, participant: "a@s.whatsapp.net" } } as Partial<WAMessage>);
-    sock.ev.emit({ messages: [msg1], type: "notify" });
+    handler([msg1], "notify");
     await new Promise((r) => setImmediate(r));
     assert.ok(firstStarted, "first turn should have started");
 
     // Second @mention — should be queued
     const msg2 = makeMentionMsg({ key: { remoteJid: GROUP_JID, id: "msg-2", fromMe: false, participant: "b@s.whatsapp.net" } } as Partial<WAMessage>);
-    sock.ev.emit({ messages: [msg2], type: "notify" });
+    handler([msg2], "notify");
     await new Promise((r) => setImmediate(r));
 
     // No holding message yet — second is queued, not dropped
@@ -265,7 +242,7 @@ describe("createMessageHandler", () => {
 
     // Third @mention — both slots occupied; should trigger holding message
     const msg3 = makeMentionMsg({ key: { remoteJid: GROUP_JID, id: "msg-3", fromMe: false, participant: "c@s.whatsapp.net" } } as Partial<WAMessage>);
-    sock.ev.emit({ messages: [msg3], type: "notify" });
+    handler([msg3], "notify");
     await new Promise((r) => setImmediate(r));
 
     assert.equal(
@@ -288,8 +265,8 @@ describe("createMessageHandler", () => {
   // 6. @mention with no text content (image-only, no caption) doesn't throw
   // -------------------------------------------------------------------------
   test("@mention with image-only (no caption) is handled without throwing", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -311,7 +288,7 @@ describe("createMessageHandler", () => {
 
     let threw = false;
     try {
-      sock.ev.emit({ messages: [imageOnlyMsg], type: "notify" });
+      handler([imageOnlyMsg], "notify");
       await new Promise((r) => setImmediate(r));
     } catch {
       threw = true;
@@ -326,8 +303,8 @@ describe("createMessageHandler", () => {
   // 7. Stale message (timestamp > 5 min ago) is skipped even with @mention
   // -------------------------------------------------------------------------
   test("stale @mention (> 5 min old) is skipped", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -336,7 +313,7 @@ describe("createMessageHandler", () => {
     );
 
     const staleMsg = makeMentionMsg({ messageTimestamp: staleSecs() } as Partial<WAMessage>);
-    sock.ev.emit({ messages: [staleMsg], type: "notify" });
+    handler([staleMsg], "notify");
     await new Promise((r) => setImmediate(r));
 
     assert.equal(agentTurnCalls.length, 0, "stale @mention should not trigger agent");
@@ -346,8 +323,8 @@ describe("createMessageHandler", () => {
   // 8. Buffer respects 30-message cap
   // -------------------------------------------------------------------------
   test("buffer correctly caps at 30 messages", async () => {
-    createMessageHandler(
-      sock as unknown as import("@whiskeysockets/baileys").WASocket,
+    handler = createMessageHandler(
+      () => sock as unknown as WASocket,
       buffer,
       DEFAULT_CONFIG,
       [BOT_JID],
@@ -359,7 +336,7 @@ describe("createMessageHandler", () => {
       const msg = makePlainMsg(`message ${i}`);
       // Give each a unique id so they're distinct
       (msg.key as { id: string }).id = `bulk-${i}`;
-      sock.ev.emit({ messages: [msg], type: "notify" });
+      handler([msg], "notify");
     }
 
     await new Promise((r) => setImmediate(r));

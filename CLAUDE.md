@@ -189,4 +189,15 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+## Claim Discipline
+
+**No surfaced error is not proof of success.** Before calling anything fixed, verified, or working, name which of these you have: **deployed** / **built-not-deployed** / **measured-not-built** / **not-started**.
+
+- **A probe is not a confirmed fix.** A theory that explains the symptom is a *candidate* until an artifact in the system of record confirms it. Say "candidate" until then.
+- **Your own success telemetry is not evidence of what the other side saw.** A server that runs correctly when you launch it says nothing about how a different caller launches it. A send that reports success says nothing about receipt.
+- **A negative result is not proof of absence** — from a sub-agent, a search, or a log query. Check the retention window, the scope, and the namespace before concluding "nothing there."
+- **Verify the specific operation, not an adjacent one.** Read access does not prove write access; a green deploy does not prove the version moved; a passing test suite does not prove the failing path is covered.
+
+This is the highest-recurrence lesson family in the connected brains, and it has repeatedly failed to fire because it lived only in `NEXT_SESSION.md`, which is rewritten every session. It belongs here, where it persists.
+
 <!-- END david-brain BRAIN CONNECTION -->
